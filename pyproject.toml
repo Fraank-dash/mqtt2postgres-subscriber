@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mqtt2postgres-subscriber"
+dynamic = ["version"]
+description = "MQTT subscriber runtime that forwards messages to Postgres ingest functions."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "paho-mqtt",
+  "psycopg2-binary",
+  "sqlalchemy",
+]
+
+[project.scripts]
+mqtt2postgres-subscriber = "mqtt2postgres_subscriber.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+fallback_version = "0.1.0"
+version_scheme = "post-release"
+local_scheme = "no-local-version"
