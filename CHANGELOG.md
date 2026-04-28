@@ -19,3 +19,7 @@
 - Added subscriber-owned `README.md`, `FORKNOTE.md`, and `CHANGELOG.md`.
 - Enabled dynamic versioning with `setuptools-scm`.
 - Set the dynamic version fallback to `1.0.0` for source trees without Git tag metadata.
+
+### Topic: Release
+
+- Prepared the initial standalone `v1.0.0` release.
