@@ -2,6 +2,11 @@
 
 ## 1.0.0 - 2026-04-28
 
+### Topic: Documentation
+
+- Added subscriber-owned docs for runtime overview, local usage, and configuration.
+- Linked the docs from the package README.
+
 ### Topic: Subscriber Runtime Split
 
 - Created the standalone `mqtt2postgres-subscriber` Python distribution.
