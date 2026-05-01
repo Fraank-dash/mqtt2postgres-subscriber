@@ -16,6 +16,8 @@ from mqtt2postgres_subscriber.models import EventEmitter, SubscriberSettings
 from mqtt2postgres_subscriber.tracing import TraceEnvelope, parse_trace_payload
 
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+TOPIC_KIND_MEASUREMENT = "measurement"
+TOPIC_KIND_STATUS = "status"
 
 
 def create_database_engine(config: SubscriberSettings) -> Engine:
@@ -27,7 +29,21 @@ def create_database_engine(config: SubscriberSettings) -> Engine:
         port=config.db_port,
         database=config.db_name,
     )
-    return create_engine(url, future=True)
+    connect_args = build_database_connect_args(config)
+    return create_engine(url, connect_args=connect_args, future=True)
+
+
+def build_database_connect_args(config: SubscriberSettings) -> dict[str, str]:
+    connect_args: dict[str, str] = {}
+    if config.db_sslmode:
+        connect_args["sslmode"] = config.db_sslmode
+    if config.db_sslrootcert:
+        connect_args["sslrootcert"] = config.db_sslrootcert
+    if config.db_sslcert:
+        connect_args["sslcert"] = config.db_sslcert
+    if config.db_sslkey:
+        connect_args["sslkey"] = config.db_sslkey
+    return connect_args
 
 
 def quote_qualified_function_name(function_name: str) -> str:
@@ -145,10 +161,23 @@ class MQTTToPostgresService:
         finally:
             self.writer.close()
 
-    def matched_topic_filter(self, topic: str) -> str | None:
+    def subscription_filters(self) -> tuple[str, ...]:
+        seen_topics: set[str] = set()
+        filters: list[str] = []
+        for topic_filter in (*self.config.status_topics, *self.config.topic_filters):
+            if topic_filter in seen_topics:
+                continue
+            seen_topics.add(topic_filter)
+            filters.append(topic_filter)
+        return tuple(filters)
+
+    def matched_topic_filter(self, topic: str) -> tuple[str, str] | None:
+        for topic_filter in self.config.status_topics:
+            if topic_matches(topic_filter, topic):
+                return topic_filter, TOPIC_KIND_STATUS
         for topic_filter in self.config.topic_filters:
             if topic_matches(topic_filter, topic):
-                return topic_filter
+                return topic_filter, TOPIC_KIND_MEASUREMENT
         return None
 
     def on_connect(self, client, userdata, flags, rc, properties=None) -> None:
@@ -170,11 +199,8 @@ class MQTTToPostgresService:
             details={"return_code": rc},
         )
 
-        seen_topics: set[str] = set()
-        for topic_filter in self.config.topic_filters:
-            if topic_filter in seen_topics:
-                continue
-            seen_topics.add(topic_filter)
+        subscription_filters = self.subscription_filters()
+        for topic_filter in subscription_filters:
             client.subscribe(topic_filter, qos=self.config.mqtt_qos)
             self.event_logger.emit(
                 "mqtt.subscribed",
@@ -190,7 +216,11 @@ class MQTTToPostgresService:
                 "service.started",
                 component="service",
                 message="MQTT to Postgres service started.",
-                details={"topic_filter_count": len(self.config.topic_filters)},
+                details={
+                    "topic_filter_count": len(self.config.topic_filters),
+                    "status_topic_count": len(self.config.status_topics),
+                    "subscription_count": len(subscription_filters),
+                },
             )
 
     def on_message(self, client, userdata, message: mqtt_client.MQTTMessage) -> None:
@@ -212,8 +242,8 @@ class MQTTToPostgresService:
             },
         )
 
-        topic_filter = self.matched_topic_filter(message.topic)
-        if topic_filter is None:
+        matched_topic = self.matched_topic_filter(message.topic)
+        if matched_topic is None:
             self.event_logger.emit(
                 "message.unrouted",
                 component="service",
@@ -223,6 +253,7 @@ class MQTTToPostgresService:
                 status="unrouted",
             )
             return
+        topic_filter, topic_kind = matched_topic
 
         self.event_logger.emit(
             "message.routed",
@@ -235,6 +266,7 @@ class MQTTToPostgresService:
                 "trace_id": trace.trace_id,
                 "sequence": trace.sequence,
                 "topic_filter": topic_filter,
+                "topic_kind": topic_kind,
             },
         )
         received_at = datetime.now(timezone.utc)
@@ -255,7 +287,12 @@ class MQTTToPostgresService:
             write_result = self.writer.insert_message(
                 topic=message.topic,
                 payload=payload,
-                metadata=build_message_metadata(message, trace=trace, topic_filter=topic_filter),
+                metadata=build_message_metadata(
+                    message,
+                    trace=trace,
+                    topic_filter=topic_filter,
+                    topic_kind=topic_kind,
+                ),
                 received_at=received_at,
             )
         except Exception as exc:
@@ -311,9 +348,11 @@ def build_message_metadata(
     *,
     trace: TraceEnvelope,
     topic_filter: str,
+    topic_kind: str = TOPIC_KIND_MEASUREMENT,
 ) -> dict[str, object]:
     metadata: dict[str, object] = {
         "topic_filter": topic_filter,
+        "topic_kind": topic_kind,
         "payload_size": len(message.payload),
         "mqtt_qos": getattr(message, "qos", None),
         "mqtt_retain": getattr(message, "retain", None),

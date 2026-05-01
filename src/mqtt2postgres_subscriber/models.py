@@ -23,8 +23,13 @@ class SubscriberSettings:
     db_name: str
     db_schema: str
     db_username: str
-    db_password: str
+    db_password: str | None
+    db_sslmode: str | None
+    db_sslrootcert: str | None
+    db_sslcert: str | None
+    db_sslkey: str | None
     topic_filters: tuple[str, ...]
+    status_topics: tuple[str, ...]
     db_ingest_function: str
     log_format: str
     log_level: str

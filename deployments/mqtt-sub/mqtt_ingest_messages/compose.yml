@@ -1,0 +1,16 @@
+services:
+  mqtt2postgres-subscriber:
+    build:
+      context: ../../..
+      network: host
+    image: mqtt2postgres-subscriber:local
+    restart: unless-stopped
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    working_dir: /
+    volumes:
+      - ./config:/config:ro
+      - ./pki:/pki:ro
+    command:
+      - mqtt2postgres-subscriber
+      - --config
+      - /config/subscriber.json

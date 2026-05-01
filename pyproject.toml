@@ -14,6 +14,14 @@ dependencies = [
   "sqlalchemy",
 ]
 
+[project.optional-dependencies]
+test = [
+  "pytest",
+]
+dev = [
+  "pytest",
+]
+
 [project.scripts]
 mqtt2postgres-subscriber = "mqtt2postgres_subscriber.cli:main"
 
@@ -24,6 +32,6 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools_scm]
-fallback_version = "1.0.0"
+fallback_version = "1.2.0"
 version_scheme = "post-release"
 local_scheme = "no-local-version"
